@@ -1,5 +1,5 @@
 import numpy as np
-from .matreduce import reduce_matrix
+from matreduce import reduce_matrix
 
 
 # return the n-simplices in a complex
