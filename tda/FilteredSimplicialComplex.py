@@ -2,45 +2,88 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
+import itertools
+import functools
 
-def euclidianDist(a,b):
-  return np.linalg.norm(a - b) #euclidian distance metric
+def euclidianDist(a,b): #this is the default metric we use but you can use whatever distance function you want
+    return np.linalg.norm(a - b) #euclidian distance metric
 
 #Build neighorbood graph
 def buildGraph(raw_data, epsilon = 3.1, metric=euclidianDist): #raw_data is a numpy array
-  nodes = [x for x in range(raw_data.shape[0])] #initialize node set, reference indices from original data array
-  edges = [] #initialize empty edge array
-  weights = [] #initialize weight array, stores the weight (which in this case is the distance) for each edge
-  for i in range(raw_data.shape[0]): #iterate through each data point
-      for j in range(raw_data.shape[0]-i): #inner loop to calculate pairwise point distances
-          a = raw_data[i]
-          b = raw_data[j+i] #each simplex is a set (no order), hence [0,1] = [1,0]; so only store one
-          if (i != j+i):
-              dist = metric(a,b)
-              if dist <= epsilon:
-                  edges.append({i,j+i}) #add edge if distance between points is < epsilon
-                  weights.append([len(edges)-1,dist]) #store index and weight
-  return nodes,edges,weights
+    nodes = [x for x in range(raw_data.shape[0])] #initialize node set, reference indices from original data array
+    edges = [] #initialize empty edge array
+    weights = [] #initialize weight array, stores the weight (which in this case is the distance) for each edge
+    for i in range(raw_data.shape[0]): #iterate through each data point
+        for j in range(raw_data.shape[0]-i): #inner loop to calculate pairwise point distances
+            a = raw_data[i]
+            b = raw_data[j+i] #each simplex is a set (no order), hence [0,1] = [1,0]; so only store one
+            if (i != j+i):
+                dist = metric(a,b)
+                if dist <= epsilon:
+                    edges.append({i,j+i}) #add edge if distance between points is < epsilon
+                    weights.append(dist)
+    return nodes,edges,weights
 
 def lower_nbrs(nodeSet, edgeSet, node): #lowest neighbors based on arbitrary ordering of simplices
     return {x for x in nodeSet if {x,node} in edgeSet and node > x}
 
-def ripsFiltration(nodes, edges, weights, k): #k is the maximal dimension we want to compute
+def ripsFiltration(graph, k): #k is the maximal dimension we want to compute (minimum is 1, edges)
+    nodes, edges, weights = graph
     VRcomplex = [{n} for n in nodes]
     filter_values = [0 for j in VRcomplex] #vertices have filter value of 0
     for i in range(len(edges)): #add 1-simplices (edges) and associated filter values
         VRcomplex.append(edges[i])
         filter_values.append(weights[i])
-    for i in range(k):
-        for simplex in [x for x in VRcomplex if len(x)==i+2]: #skip 0-simplices
-            #for each u in simplex
-            nbrs = set.intersection(*[lower_nbrs(nodes, edges, z) for z in simplex])
-            for nbr in nbrs:
-                VRcomplex.append(set.union(simplex,{nbr}))
-    return VRcomplex, filter_values
+    if k > 1:
+        for i in range(k):
+            for simplex in [x for x in VRcomplex if len(x)==i+2]: #skip 0-simplices and 1-simplices
+                #for each u in simplex
+                nbrs = set.intersection(*[lower_nbrs(nodes, edges, z) for z in simplex])
+                for nbr in nbrs:
+                    newSimplex = set.union(simplex,{nbr})
+                    VRcomplex.append(newSimplex)
+                    filter_values.append(getFilterValue(newSimplex, VRcomplex, filter_values))
 
-def getFilterValue(simplex, complex, filter_values):
-    return filter_values[complex.index(simplex)]
+    return sortComplex(VRcomplex, filter_values) #sort simplices according to filter values
+
+def getFilterValue(simplex, edges, weights): #filter value is the maximum weight of an edge in the simplex
+    oneSimplices = list(itertools.combinations(simplex, 2)) #get set of 1-simplices in the simplex
+    max_weight = 0
+    for oneSimplex in oneSimplices:
+        filter_value = weights[edges.index(set(oneSimplex))]
+        if filter_value > max_weight: max_weight = filter_value
+    return max_weight
+
+
+def compare(item1, item2): 
+    #comparison function that will provide the basis for our total order on the simpices
+    #each item represents a simplex, bundled as a list [simplex, filter value] e.g. [{0,1}, 4]
+    if len(item1[0]) == len(item2[0]):
+        if item1[1] == item2[1]: #if both items have same filter value
+            if sum(item1[0]) > sum(item2[0]):
+                return 1
+            else:
+                return -1
+        else:
+            if item1[1] > item2[1]:
+                return 1
+            else:
+                return -1
+    else:
+        if len(item1[0]) > len(item2[0]):
+            return 1
+        else:
+            return -1
+
+def sortComplex(filterComplex, filterValues): #need simplices in filtration have a total order
+    #sort simplices in filtration by filter values
+    pairedList = zip(filterComplex, filterValues)
+    #since I'm using Python 3.5+, no longer supports custom compare, need conversion helper function..its ok
+    sortedComplex = sorted(pairedList, key=functools.cmp_to_key(compare)) 
+    sortedComplex = [list(t) for t in zip(*sortedComplex)]
+    #then sort >= 1 simplices in each chain group by the arbitrary total order on the vertices
+    orderValues = [x for x in range(len(filterComplex))]
+    return sortedComplex
 
 def drawComplex(origData, ripsComplex, axes=[-6,8,-6,6]):
   plt.clf()
