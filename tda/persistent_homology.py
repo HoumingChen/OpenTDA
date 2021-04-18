@@ -39,7 +39,7 @@ def reduceBoundaryMatrix(matrix):
         j = r[1]
         col_j = reduced_matrix[:,j]
         col_i = reduced_matrix[:,i]
-        print("Mod: add col %s to %s \n" % (i+1,j+1)) #Uncomment to see what mods are made
+        #print("Mod: add col %s to %s \n" % (i+1,j+1)) #Uncomment to see what mods are made
         reduced_matrix[:,j] = np.bitwise_xor(col_i,col_j) #add column i to j
         memory[i,j] = 1
         r = isReduced(reduced_matrix)
